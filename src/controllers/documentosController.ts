@@ -272,36 +272,92 @@ export const guardarDocumentoGeneral = async (req: Request, res: Response) => {
     }
 };
 
-export const updateDocumentoGeneral = async (req: Request, res: Response) => {
+export const actualizarDocumento = async (req: Request, res: Response) => {
     const { id } = req.params;
-    const { tri, n_minuta, detalle, destino, archivado_en } = req.body;
+    const { 
+        fecha, 
+        tri, 
+        n_minuta, 
+        detalle, 
+        destino, 
+        archivado_en, 
+        tipo_documento_id 
+    } = req.body;
+
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        // Actualizamos la tabla MASTER (tri y n_minuta)
-        await client.query(
+        // 1. Actualizamos documentos_master
+        // Solo los campos que pertenecen a esta tabla según tu esquema
+        const masterRes = await client.query(
             `UPDATE documentos_master 
-             SET tri = $1, n_minuta = $2 
-             WHERE id = $3`,
-            [tri, n_minuta, id]
+             SET tri = $1, 
+                 n_minuta = $2, 
+                 fecha = $3, 
+                 anio = EXTRACT(YEAR FROM $3::date)
+             WHERE id = $4`,
+            [tri, n_minuta, fecha, id]
         );
 
-        // Actualizamos la tabla DETALLES (detalle, destino, archivado_en)
+        if (masterRes.rowCount === 0) {
+            await client.query('ROLLBACK');
+            return sendResponse(res, 404, false, 'El documento maestro no existe');
+        }
+
+        // 2. Actualizamos documentos_detalles
+        // Aquí es donde movemos el tipo_documento_id según tu esquema
         await client.query(
             `UPDATE documentos_detalles 
-             SET detalle = $1, destino = $2, archivado_en = $3 
-             WHERE documento_id = $4`,
-            [detalle, destino, archivado_en, id]
+             SET detalle = $1, 
+                 destino = $2, 
+                 archivado_en = $3,
+                 tipo_documento_id = $4
+             WHERE documento_id = $5`,
+            [detalle, destino, archivado_en, tipo_documento_id, id]
         );
 
         await client.query('COMMIT');
         return sendResponse(res, 200, true, 'Documento actualizado con éxito');
+
     } catch (error: any) {
         await client.query('ROLLBACK');
+        console.error("Error en Transacción:", error);
         return sendResponse(res, 500, false, 'Error al actualizar documento', null, error.message);
     } finally {
         client.release();
     }
+}
+
+export const borrarDocumentoId = async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    // Validación básica: asegurarse de que el ID sea un número
+    if (!id || isNaN(Number(id))) {
+        return sendResponse(res, 400, false, 'ID de documento no válido');
+    }
+
+    try {
+        // Ejecutamos el DELETE en la tabla MASTER
+        // El ON DELETE CASCADE borrará automáticamente en documentos_detalles
+        const result = await pool.query(
+            'DELETE FROM documentos_master WHERE id = $1 RETURNING *',
+            [id]
+        );
+
+        // Si no se afectó ninguna fila, el documento no existía
+        if (result.rowCount === 0) {
+            return sendResponse( res, 404, false, 'El documento que intenta eliminar no existe');
+        }
+
+        // Respuesta exitosa
+        return sendResponse( res, 200, true, 'Documento eliminado correctamente del sistema');
+
+    } catch (error: any) {
+        console.error('Error al eliminar documento:', error);
+        
+        // Manejo de errores específicos de base de datos si fuera necesario
+        return sendResponse(res, 500,false,'Error interno al intentar eliminar el registro', null, error.message);
+    } 
 };
