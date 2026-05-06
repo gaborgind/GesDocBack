@@ -250,14 +250,14 @@ export const updateResolucion = async (req: Request, res: Response) => {
         // 2. Actualizamos la tabla de Detalle
         await client.query(`
             UPDATE resoluciones_detalles 
-            SET origen = $1, 
-              tema = $2, 
-              tipo_resolucion_id = $3, 
-              cargo_id = $4, 
-              area_id = $5, 
-              catedra = $6
-            WHERE documento_id = $7
-        `, [origen, tema, tipo_resolucion_id, cargo_id, area_id, catedra, id]);
+            SET 
+              tema = $1, 
+              tipo_resolucion_id = $2, 
+              cargo_id = $3, 
+              area_id = $4, 
+              catedra = $5
+            WHERE documento_id = $6
+        `, [ tema, tipo_resolucion_id, cargo_id, area_id, catedra, id]);
 
         await client.query('COMMIT');
         return sendResponse(res, 200, true, 'Resolución actualizada con éxito');
