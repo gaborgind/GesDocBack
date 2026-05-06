@@ -7,13 +7,14 @@ import { sendResponse } from '../utils/responseHandler'
 // FILTRO AVANZADO: Permite buscar por texto, tipo, destino y rango de fechas
 export const getDocumentosByFilter = async (req: Request, res: Response) => {
     try {
-        const { q, tipo, destino, desde, hasta } = req.query;
-        let values: any[] = [];
-        let conditions: string[] = [];
+        const { busqueda, tipo, destino, desde, hasta } = req.query;
+        let values: any[] = [];       
+        // FILTRO CLAVE: Solo traer lo que sea categoría GENERAL
+        let conditions: string[] = ["m.categoria = 'GENERAL'"]; 
         
         // Construcción dinámica de condiciones
-        if (q) {
-            values.push(`%${q}%`);
+        if (busqueda) {
+            values.push(`%${busqueda}%`);
             conditions.push(`(m.numero_completo ILIKE $${values.length} OR d.detalle ILIKE $${values.length})`);
         }
         // Si es 'Todos', no entra al IF y no filtra, trayendo todo.
@@ -29,18 +30,15 @@ export const getDocumentosByFilter = async (req: Request, res: Response) => {
             values.push(desde, hasta);
             conditions.push(`m.fecha BETWEEN $${values.length - 1} AND $${values.length}`);
         }
+        const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
-        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-        // El ORDER BY m.fecha DESC garantiza que lo más nuevo esté arriba.
-        // Agregamos m.id DESC como segundo criterio por si hay varios documentos el mismo día.
         const query = `
             SELECT 
                 m.*, 
                 d.destino, d.archivado_en, d.detalle,
                 td.nombre AS tipo_documento_nombre
             FROM documentos_master m
-            LEFT JOIN documentos_detalles d ON m.id = d.documento_id
+            INNER JOIN documentos_detalles d ON m.id = d.documento_id -- Cambiamos a INNER para mayor seguridad
             LEFT JOIN tipos_documentos td ON d.tipo_documento_id = td.id
             ${whereClause}
             ORDER BY m.fecha DESC, m.id DESC;
@@ -163,7 +161,7 @@ export const createDocumento = async (req: Request, res: Response) => {
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
             [numeroCompleto, nuevoSecuencial, anioDocumento, categoriaMaster, fecha, tri, n_minuta, autor_id, fichero_url]
         );
-         console.log("mARTER RES ", masterRes.rows[0])           
+                   
         const newId = masterRes.rows[0].id; // El ID que generó Postgres
 
         // 8. SEGUNDO INSERT: Tabla de detalles (Bifurcación)
@@ -202,8 +200,6 @@ export const createDocumento = async (req: Request, res: Response) => {
         client.release();
     }
 }
-
-// Ejemplo de lógica en tu API Node.js
 
 export const guardarDocumentoGeneral = async (req: Request, res: Response) => {
     const { 
