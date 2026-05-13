@@ -356,4 +356,74 @@ export const borrarDocumentoId = async (req: Request, res: Response) => {
         // Manejo de errores específicos de base de datos si fuera necesario
         return sendResponse(res, 500,false,'Error interno al intentar eliminar el registro', null, error.message);
     } 
-};
+}
+
+
+
+export const getDestinos = async (req: Request, res: Response) => {
+    try {
+        // Ordenamos alfabéticamente para que el select sea fácil de usar       
+        const { rows } = await pool.query('SELECT id, nombre FROM destino ORDER BY nombre ASC');
+        res.json({ success: true, data: rows });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al obtener destinos' });
+    }
+}
+
+
+export const guardarDestinos = async (req: Request, res: Response) => {
+    const { nombre } = req.body;
+
+    if (!nombre) {
+        return res.status(400).json({ success: false, message: 'El nombre es requerido' });
+    }
+
+    try {
+        // 1. Buscamos si ya existe (sin importar mayúsculas/minúsculas)
+        const [existe]: any = await pool.query(
+            'SELECT id, nombre FROM destino WHERE LOWER(nombre) = LOWER(?)', 
+            [nombre.trim()]
+        );
+
+        if (existe.length > 0) {
+            // Si ya existe, devolvemos el que encontramos para que React lo seleccione
+            return res.json({ 
+                success: true, 
+                message: 'El destino ya existía, se seleccionó automáticamente.',
+                data: existe[0], // Devolvemos {id, nombre} del existente
+                existia: true 
+            });
+        }
+
+        // 2. Si no existe, lo insertamos
+        const [result]: any = await pool.query(
+            'INSERT INTO destino (nombre) VALUES (?)', 
+            [nombre.trim()]
+        );
+
+        res.json({ 
+            success: true, 
+            data: { id: result.insertId, nombre: nombre.trim() },
+            existia: false
+        });
+
+    } catch (error: any) {
+        if (error.code === 'ER_DUP_ENTRY') {
+            return res.status(400).json({ success: false, message: 'Este destino ya existe' });
+        }
+        res.status(500).json({ success: false, message: 'Error al procesar el destino' });
+    }
+}
+
+
+export const getArchivadoEn = async (req: Request, res: Response) => {
+    try {
+        const result = await pool.query('SELECT id, nombre FROM archivado_en ORDER BY nombre ASC');
+        res.json({ 
+            success: true, 
+            data: result.rows 
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: 'Error al obtener lugares de archivo' });
+    }
+}
